@@ -1,0 +1,38 @@
+UCL MODEL ERROR ANALYSIS
+======================================================================
+Model: Logistic Regression
+Test matches: 1103
+
+TOP 15 FEATURE INFLUENCE
+----------------------------------------------------------------------
+ 1. away_form_ppg: 0.380301
+ 2. away_overall_ppg: 0.358226
+ 3. home_matches_played: 0.302483
+ 4. home_team_home_matches: 0.246068
+ 5. home_form_goals_for: 0.230719
+ 6. home_overall_win_rate: 0.207674
+ 7. home_form_goals_for_pg: 0.205969
+ 8. home_overall_goals_for_pg: 0.205492
+ 9. away_overall_win_rate: 0.187060
+10. home_overall_ppg: 0.180287
+11. home_form_goals_against: 0.171442
+12. away_form_goals_against_pg: 0.170005
+13. home_form_goals_against_pg: 0.168850
+14. home_overall_goals_against_pg: 0.162846
+15. away_overall_goals_against_pg: 0.153825
+
+CONFUSION MATRIX (actual rows, predicted columns)
+----------------------------------------------------------------------
+        Actual      HOME_WIN          DRAW      AWAY_WIN
+      HOME_WIN           438             0            57
+          DRAW           174             3            73
+      AWAY_WIN           202             3           153
+
+HIGH-CONFIDENCE INCORRECT PREDICTIONS (probability > 0.60)
+----------------------------------------------------------------------
+Count: 122
+Error distribution:
+  Actual DRAW, predicted HOME_WIN: 64
+  Actual AWAY_WIN, predicted HOME_WIN: 50
+  Actual HOME_WIN, predicted AWAY_WIN: 6
+  Actual DRAW, predicted AWAY_WIN: 2
