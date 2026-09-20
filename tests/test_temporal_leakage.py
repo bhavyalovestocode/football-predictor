@@ -92,6 +92,17 @@ def test_same_timestamp_matches_use_identical_pre_timestamp_history():
         same_timestamp.loc["game-b", historical_columns]
     )
     assert same_timestamp.loc["game-a", "home_matches_played"] == 1
+    differential_columns = [
+        "ppg_diff",
+        "overall_ppg_diff",
+        "goal_diff_pg",
+        "expected_goal_margin",
+    ]
+    assert same_timestamp.loc["game-a", differential_columns].equals(
+        same_timestamp.loc["game-b", differential_columns]
+    )
+    assert same_timestamp.loc["game-a", "ppg_diff"] == 3.0
+    assert same_timestamp.loc["game-a", "expected_goal_margin"] == 2.0
 
 
 def test_same_timestamp_result_cannot_influence_another_match():

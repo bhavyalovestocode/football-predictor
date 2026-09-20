@@ -4,7 +4,7 @@ from src.config import PROCESSED_DATA_DIR
 
 
 INPUT_FILE = PROCESSED_DATA_DIR / "ucl_matches_dated.csv"
-OUTPUT_FILE = PROCESSED_DATA_DIR / "ucl_features_v1.csv"
+OUTPUT_FILE = PROCESSED_DATA_DIR / "ucl_features_v2.csv"
 
 FORM_WINDOW = 5
 
@@ -265,6 +265,15 @@ def build_features(df):
                 "home_team_home_matches": home_history["home_matches"], "away_team_away_matches": away_history["away_matches"],
                 "home_team_home_ppg": home_home["ppg"], "away_team_away_ppg": away_away["ppg"],
                 "home_team_home_win_rate": home_home["win_rate"], "away_team_away_win_rate": away_away["win_rate"],
+                "ppg_diff": home_recent["ppg"] - away_recent["ppg"],
+                "overall_ppg_diff": home_overall["ppg"] - away_overall["ppg"],
+                "goal_diff_pg": home_recent["goals_for_pg"] - away_recent["goals_against_pg"],
+                "expected_goal_margin": (
+                    home_recent["goals_for_pg"]
+                    - away_recent["goals_against_pg"]
+                    - away_recent["goals_for_pg"]
+                    + home_recent["goals_against_pg"]
+                ),
                 "phase": match["phase"], "round": match["round"], "match_type": match["match_type"],
                 "target": match["result_after_90"],
             }

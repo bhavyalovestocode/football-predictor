@@ -6,7 +6,7 @@ import pandas as pd
 from src.config import PROCESSED_DATA_DIR
 
 
-INPUT_FILE = PROCESSED_DATA_DIR / "ucl_features_v1.csv"
+INPUT_FILE = PROCESSED_DATA_DIR / "ucl_features_v2.csv"
 TRAIN_FILE = PROCESSED_DATA_DIR / "train.csv"
 VAL_FILE = PROCESSED_DATA_DIR / "val.csv"
 TEST_FILE = PROCESSED_DATA_DIR / "test.csv"
