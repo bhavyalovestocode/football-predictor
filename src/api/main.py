@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.config import MODEL_DIR
@@ -15,6 +16,7 @@ from src.prediction.predict import (
     _model_class_labels,
     predict_match_outcome,
 )
+from src.api.ui import dashboard_html
 
 
 MODEL_FILE = MODEL_DIR / "v2_model.joblib"
@@ -83,6 +85,12 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard(request: Request):
+    artifact = request.app.state.model_artifact
+    return HTMLResponse(dashboard_html(artifact["feature_columns"]))
 
 
 @app.get("/health")
