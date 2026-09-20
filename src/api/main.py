@@ -9,17 +9,20 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.config import MODEL_DIR
+from src.config import MODEL_DIR, PROCESSED_DATA_DIR
 from src.models.train_baseline import prepare_features
 from src.prediction.predict import (
     OUTCOME_ORDER,
     _model_class_labels,
+    get_available_teams,
+    get_latest_team_features,
     predict_match_outcome,
 )
 from src.api.ui import dashboard_html
 
 
 MODEL_FILE = MODEL_DIR / "v2_model.joblib"
+FEATURES_FILE = PROCESSED_DATA_DIR / "ucl_features_v2.csv"
 
 
 class MatchPredictionRequest(BaseModel):
@@ -36,6 +39,14 @@ class MatchPredictionResponse(BaseModel):
     probabilities: Dict[str, float]
     implied_odds: Dict[str, float]
     predicted_outcome: str
+
+
+class TeamPredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    home_team: str = Field(..., min_length=1)
+    away_team: str = Field(..., min_length=1)
+    draw_threshold: float = Field(default=0.26, ge=0.0, le=1.0)
 
 
 def _load_model_artifact(model_file=MODEL_FILE):
@@ -77,6 +88,8 @@ async def lifespan(app: FastAPI):
     if not Path(MODEL_FILE).exists():
         raise RuntimeError(f"Model artifact not found: {MODEL_FILE}")
     app.state.model_artifact = _load_model_artifact()
+    app.state.feature_data = pd.read_csv(FEATURES_FILE)
+    app.state.team_names = get_available_teams(app.state.feature_data)
     yield
 
 
@@ -90,7 +103,12 @@ app = FastAPI(
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     artifact = request.app.state.model_artifact
-    return HTMLResponse(dashboard_html(artifact["feature_columns"]))
+    return HTMLResponse(
+        dashboard_html(
+            artifact["feature_columns"],
+            request.app.state.team_names,
+        )
+    )
 
 
 @app.get("/health")
@@ -104,12 +122,53 @@ def health(request: Request):
     }
 
 
+@app.get("/teams")
+def teams(request: Request):
+    return request.app.state.team_names
+
+
 @app.post("/predict", response_model=MatchPredictionResponse)
 def predict(request: MatchPredictionRequest, app_request: Request):
     try:
         probabilities, implied_odds = _predict_with_artifact(
             app_request.app.state.model_artifact,
             request.features,
+        )
+        predicted_outcome = predict_match_outcome(
+            {f"P_{outcome}": probability for outcome, probability in probabilities.items()},
+            draw_threshold=request.draw_threshold,
+        )
+    except (TypeError, ValueError, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return MatchPredictionResponse(
+        probabilities={
+            "home_win": probabilities["HOME_WIN"],
+            "draw": probabilities["DRAW"],
+            "away_win": probabilities["AWAY_WIN"],
+        },
+        implied_odds={
+            "home_win": implied_odds["HOME_WIN"],
+            "draw": implied_odds["DRAW"],
+            "away_win": implied_odds["AWAY_WIN"],
+        },
+        predicted_outcome=predicted_outcome,
+    )
+
+
+@app.post("/predict/teams", response_model=MatchPredictionResponse)
+def predict_teams(request: TeamPredictionRequest, app_request: Request):
+    try:
+        artifact = app_request.app.state.model_artifact
+        feature_row = get_latest_team_features(
+            request.home_team,
+            request.away_team,
+            features_df=app_request.app.state.feature_data,
+            feature_columns=artifact["feature_columns"],
+        )
+        probabilities, implied_odds = _predict_with_artifact(
+            artifact,
+            feature_row.iloc[0].to_dict(),
         )
         predicted_outcome = predict_match_outcome(
             {f"P_{outcome}": probability for outcome, probability in probabilities.items()},

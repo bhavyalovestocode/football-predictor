@@ -1,11 +1,15 @@
 from html import escape
 
 
-def dashboard_html(feature_columns):
+def dashboard_html(feature_columns, team_names=()):
     feature_fields = "\n".join(
         f'''<label class="field"><span>{escape(column)}</span>'''
         f'''<input name="{escape(column)}" type="number" step="any" value="0" required></label>'''
         for column in feature_columns
+    )
+    team_options = "\n".join(
+        f'<option value="{escape(team, quote=True)}">{escape(team)}</option>'
+        for team in team_names
     )
 
     template = """<!doctype html>
@@ -27,6 +31,10 @@ def dashboard_html(feature_columns):
     section { background: var(--panel); border: 1px solid var(--line); padding: 22px; box-shadow: 8px 8px 0 rgba(23, 33, 33, .06); }
     h2 { font-size: 1.2rem; margin: 0 0 16px; }
     .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 14px; max-height: 640px; overflow: auto; padding-right: 6px; }
+    .team-panel { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
+    .team-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    select { width: 100%; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px; font: 14px Georgia, serif; }
+    select:focus { outline: 2px solid #efb29d; border-color: var(--accent); }
     .field { display: grid; gap: 4px; color: var(--muted); font: 11px Arial, sans-serif; }
     input { width: 100%; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 9px 10px; font: 14px Georgia, serif; }
     input:focus { outline: 2px solid #efb29d; border-color: var(--accent); }
@@ -55,7 +63,17 @@ def dashboard_html(feature_columns):
     </header>
     <div class="layout">
       <section>
-        <h2>Pre-match features</h2>
+        <div class="team-panel">
+          <h2>Choose a matchup</h2>
+          <form id="team-form">
+            <div class="team-fields">
+              <label class="field"><span>Home team</span><select id="home-team" required><option value="">Select home team</option>__TEAM_OPTIONS__</select></label>
+              <label class="field"><span>Away team</span><select id="away-team" required><option value="">Select away team</option>__TEAM_OPTIONS__</select></label>
+            </div>
+            <div class="controls"><label class="field threshold"><span>Draw threshold</span><input id="team-draw-threshold" type="number" min="0" max="1" step="0.01" value="0.26"></label><button type="submit">Predict matchup</button></div>
+          </form>
+        </div>
+        <h2>Manual feature desk</h2>
         <form id="prediction-form">
           <div class="fields">__FEATURE_FIELDS__</div>
           <div class="controls">
@@ -78,9 +96,30 @@ def dashboard_html(feature_columns):
   </main>
   <script>
     const form = document.getElementById('prediction-form');
+    const teamForm = document.getElementById('team-form');
     const status = document.getElementById('status');
     const formatProbability = value => `${(value * 100).toFixed(1)}%`;
     const formatOdds = value => `Odds ${value.toFixed(2)}`;
+    const renderResult = result => {
+      document.getElementById('home-prob').textContent = formatProbability(result.probabilities.home_win);
+      document.getElementById('draw-prob').textContent = formatProbability(result.probabilities.draw);
+      document.getElementById('away-prob').textContent = formatProbability(result.probabilities.away_win);
+      document.getElementById('home-odds').textContent = formatOdds(result.implied_odds.home_win);
+      document.getElementById('draw-odds').textContent = formatOdds(result.implied_odds.draw);
+      document.getElementById('away-odds').textContent = formatOdds(result.implied_odds.away_win);
+      document.getElementById('outcome').textContent = result.predicted_outcome;
+    };
+    teamForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      status.textContent = 'Loading latest team states...';
+      try {
+        const response = await fetch('/predict/teams', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({home_team: document.getElementById('home-team').value, away_team: document.getElementById('away-team').value, draw_threshold: Number(document.getElementById('team-draw-threshold').value)}) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Prediction failed.');
+        renderResult(result);
+        status.textContent = 'Team matchup prediction updated.';
+      } catch (error) { status.textContent = error.message; }
+    });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const features = Object.fromEntries(new FormData(form).entries());
@@ -91,17 +130,13 @@ def dashboard_html(feature_columns):
         const response = await fetch('/predict', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({features, draw_threshold: Number(document.getElementById('draw-threshold').value)}) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'Prediction failed.');
-        document.getElementById('home-prob').textContent = formatProbability(result.probabilities.home_win);
-        document.getElementById('draw-prob').textContent = formatProbability(result.probabilities.draw);
-        document.getElementById('away-prob').textContent = formatProbability(result.probabilities.away_win);
-        document.getElementById('home-odds').textContent = formatOdds(result.implied_odds.home_win);
-        document.getElementById('draw-odds').textContent = formatOdds(result.implied_odds.draw);
-        document.getElementById('away-odds').textContent = formatOdds(result.implied_odds.away_win);
-        document.getElementById('outcome').textContent = result.predicted_outcome;
+        renderResult(result);
         status.textContent = 'Prediction updated.';
       } catch (error) { status.textContent = error.message; }
     });
   </script>
 </body>
 </html>"""
-    return template.replace("__FEATURE_FIELDS__", feature_fields)
+    return template.replace("__FEATURE_FIELDS__", feature_fields).replace(
+        "__TEAM_OPTIONS__", team_options
+    )

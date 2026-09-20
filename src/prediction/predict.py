@@ -12,12 +12,122 @@ from src.models.train_baseline import prepare_features, resolve_target_column
 
 
 MODEL_FILE = MODEL_DIR / "v2_model.joblib"
+FEATURES_FILE = PROCESSED_DATA_DIR / "ucl_features_v2.csv"
 VALIDATION_FILE = PROCESSED_DATA_DIR / "val.csv"
 OUTCOME_ORDER = ["HOME_WIN", "DRAW", "AWAY_WIN"]
+DIFFERENTIAL_FEATURES = {
+    "ppg_diff",
+    "overall_ppg_diff",
+    "goal_diff_pg",
+    "expected_goal_margin",
+}
 
 
 def load_artifact(model_file=MODEL_FILE):
     return joblib.load(model_file)
+
+
+def get_available_teams(features_df=None):
+    if features_df is None:
+        features_df = pd.read_csv(FEATURES_FILE)
+    return sorted(
+        set(features_df["home_team"].dropna())
+        | set(features_df["away_team"].dropna())
+    )
+
+
+def _latest_team_row(features_df, team_name, role=None):
+    if role == "home":
+        rows = features_df[features_df["home_team"] == team_name]
+    elif role == "away":
+        rows = features_df[features_df["away_team"] == team_name]
+    else:
+        rows = features_df[
+            (features_df["home_team"] == team_name)
+            | (features_df["away_team"] == team_name)
+        ]
+
+    if rows.empty:
+        role_description = f" as {role}" if role else ""
+        raise ValueError(f"Team not found{role_description}: {team_name}")
+
+    rows = rows.copy()
+    rows["date"] = pd.to_datetime(rows["date"], errors="coerce", utc=True)
+    rows = rows.dropna(subset=["date"])
+    if rows.empty:
+        raise ValueError(f"Team has no dated matches: {team_name}")
+    sort_columns = ["date"]
+    if "match_id" in rows.columns:
+        sort_columns.append("match_id")
+    return rows.sort_values(sort_columns).iloc[-1]
+
+
+def get_latest_team_features(
+    home_team,
+    away_team,
+    features_df=None,
+    feature_columns=None,
+):
+    """Build a pre-match feature row from each team's latest available state."""
+    if home_team == away_team:
+        raise ValueError("Home and away teams must be different.")
+    if features_df is None:
+        features_df = pd.read_csv(FEATURES_FILE)
+    if feature_columns is None:
+        feature_columns = load_artifact()["feature_columns"]
+
+    home_latest = _latest_team_row(features_df, home_team)
+    away_latest = _latest_team_row(features_df, away_team)
+    home_role_latest = _latest_team_row(features_df, home_team, role="home")
+    away_role_latest = _latest_team_row(features_df, away_team, role="away")
+
+    def value_for_team(column, latest, role_latest, source_side):
+        if column.startswith("home_team_home_"):
+            return role_latest[column]
+        if column.startswith("away_team_away_"):
+            return role_latest[column]
+
+        prefix = f"{source_side}_"
+        if column.startswith("home_"):
+            source_column = prefix + column[len("home_"):]
+        elif column.startswith("away_"):
+            source_column = prefix + column[len("away_"):]
+        else:
+            raise ValueError(f"Unsupported feature column: {column}")
+        return latest[source_column]
+
+    values = {}
+    home_source_side = "home" if home_latest["home_team"] == home_team else "away"
+    away_source_side = "home" if away_latest["home_team"] == away_team else "away"
+    for column in feature_columns:
+        if column in DIFFERENTIAL_FEATURES:
+            continue
+        if column.startswith("home_"):
+            values[column] = value_for_team(
+                column, home_latest, home_role_latest, home_source_side
+            )
+        elif column.startswith("away_"):
+            values[column] = value_for_team(
+                column, away_latest, away_role_latest, away_source_side
+            )
+        else:
+            raise ValueError(f"Unsupported feature column: {column}")
+
+    values["ppg_diff"] = values["home_form_ppg"] - values["away_form_ppg"]
+    values["overall_ppg_diff"] = (
+        values["home_overall_ppg"] - values["away_overall_ppg"]
+    )
+    values["goal_diff_pg"] = (
+        values["home_form_goals_for_pg"]
+        - values["away_form_goals_against_pg"]
+    )
+    values["expected_goal_margin"] = (
+        values["home_form_goals_for_pg"]
+        - values["away_form_goals_against_pg"]
+        - values["away_form_goals_for_pg"]
+        + values["home_form_goals_against_pg"]
+    )
+    return pd.DataFrame([values], columns=feature_columns)
 
 
 def _model_class_labels(model, artifact_classes):
