@@ -127,6 +127,29 @@ def teams(request: Request):
     return request.app.state.team_names
 
 
+@app.get("/teams/features")
+def team_features(home_team: str, away_team: str, request: Request):
+    try:
+        artifact = request.app.state.model_artifact
+        feature_row = get_latest_team_features(
+            home_team,
+            away_team,
+            features_df=request.app.state.feature_data,
+            feature_columns=artifact["feature_columns"],
+        )
+    except (TypeError, ValueError, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return {
+        "home_team": home_team,
+        "away_team": away_team,
+        "features": {
+            column: float(feature_row.iloc[0][column])
+            for column in artifact["feature_columns"]
+        },
+    }
+
+
 @app.post("/predict", response_model=MatchPredictionResponse)
 def predict(request: MatchPredictionRequest, app_request: Request):
     try:

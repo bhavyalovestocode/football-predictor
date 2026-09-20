@@ -100,6 +100,28 @@ def dashboard_html(feature_columns, team_names=()):
     const status = document.getElementById('status');
     const formatProbability = value => `${(value * 100).toFixed(1)}%`;
     const formatOdds = value => `Odds ${value.toFixed(2)}`;
+    const populateManualFeatures = features => {
+      Object.entries(features).forEach(([name, value]) => {
+        const input = form.elements.namedItem(name);
+        if (input) input.value = value;
+      });
+    };
+    const loadTeamFeatures = async () => {
+      const homeTeam = document.getElementById('home-team').value;
+      const awayTeam = document.getElementById('away-team').value;
+      if (!homeTeam || !awayTeam) return;
+      status.textContent = 'Loading latest team features...';
+      try {
+        const query = new URLSearchParams({home_team: homeTeam, away_team: awayTeam});
+        const response = await fetch(`/teams/features?${query}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Could not load team features.');
+        populateManualFeatures(result.features);
+        status.textContent = 'Latest team features loaded. You can edit them below.';
+      } catch (error) { status.textContent = error.message; }
+    };
+    document.getElementById('home-team').addEventListener('change', loadTeamFeatures);
+    document.getElementById('away-team').addEventListener('change', loadTeamFeatures);
     const renderResult = result => {
       document.getElementById('home-prob').textContent = formatProbability(result.probabilities.home_win);
       document.getElementById('draw-prob').textContent = formatProbability(result.probabilities.draw);
