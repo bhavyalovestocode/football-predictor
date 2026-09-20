@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+football_predictor.egg-info/PKG-INFO
+football_predictor.egg-info/SOURCES.txt
+football_predictor.egg-info/dependency_links.txt
+football_predictor.egg-info/top_level.txt
+src/__init__.py
+src/config.py
+src/api/__init__.py
+src/data/__init__.py
+src/data/load_ucl.py
+src/evaluation/__init__.py
+src/features/__init__.py
+src/models/__init__.py
+src/prediction/__init__.py
+tests/test_config.py
